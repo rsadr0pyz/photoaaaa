@@ -1,0 +1,9 @@
+## IDF Component Manager Manifest File
+dependencies:
+  espressif/esp_tinyusb:
+    version: "^2.0.1~1"
+  idf: ^6.0
+  espressif/esp-tflite-micro: '*'
+  espressif/esp32-camera: '*'
+  espressif/button: '*'
+  espressif/esp32_s3_eye: ^6.0.0
