@@ -9,7 +9,17 @@
 
 esp_err_t camera_setup()
 {
-    bsp_camera_start(NULL);
+    bsp_i2c_init();
+    camera_config_t camera_config = BSP_CAMERA_DEFAULT_CONFIG;
+    camera_config.fb_count = 1;
+    camera_config.grab_mode = CAMERA_GRAB_LATEST;  
+    
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera Init Failed");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "CAMERA SETUP OK");
     return ESP_OK;
 }
 

@@ -27,15 +27,13 @@ static inline void send_code(uint8_t code)
     _write_data((uint8_t *)&code, 1);
 }
 
-void send_text(const char *fmt, ...)
+
+
+int _vsend_text(const char *fmt, va_list args)
 {
     send_code(SEND_TEXT_PREFIX);
-
-    va_list args;
     char *buf;
-    va_start(args, fmt);
     int rc = vasprintf(&buf, fmt, args);
-    va_end(args);
 
     int must_free = 1;
     const char *out = buf;
@@ -51,6 +49,15 @@ void send_text(const char *fmt, ...)
     if(must_free) free(buf);
 
     send_code(END_SUFIX);
+    return rc;
+}
+
+void send_text(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    _vsend_text(fmt, args);
+    va_end(args);
 }
 
 static void _write_data(const uint8_t* buf, int size)
@@ -83,6 +90,11 @@ void send_camera_data(camera_fb_t *fb)
     send_bytes(fb->buf, fb->len);
 }
 
+void nothing(camera_fb_t *fb)
+{
+}
+
+
 
 void read_bytes(uint8_t *buf, size_t amt)
 {
@@ -94,7 +106,6 @@ void read_bytes(uint8_t *buf, size_t amt)
                         buf+total,
                         amt-total,
                         &len);
-        total += len;
 
         if (len > 0) 
             total += len;
@@ -107,7 +118,7 @@ void read_bytes(uint8_t *buf, size_t amt)
 
 void com_setup()
 {
-
+    
     ESP_LOGI(TAG, "USB initialization");
     const tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
@@ -122,7 +133,8 @@ void com_setup()
 
 
     ESP_ERROR_CHECK(tinyusb_cdcacm_init(&acm_cfg));
-
+    esp_log_set_vprintf(_vsend_text);
+    
     //handshake
     uint8_t code = 0;
     read_bytes(&code, 1);
@@ -137,6 +149,7 @@ void com_setup()
 
 int app_main()
 {
+    camera_setup();
     com_setup();
     if(!connected) return 1;
 
@@ -148,6 +161,17 @@ int app_main()
         if(code == TAKE_PICTURE_CODE)
         {
             send_text("photo\n");
+
+            // let the camera sensor settle
+            if(camera_capture(nothing) == ESP_FAIL)
+                send_text("photo ERROR\n");
+            if(camera_capture(nothing) == ESP_FAIL)
+                send_text("photo ERROR\n");
+            if(camera_capture(nothing) == ESP_FAIL)
+                send_text("photo ERROR\n");
+            if(camera_capture(nothing) == ESP_FAIL)
+                send_text("photo ERROR\n");
+
             if(camera_capture(send_camera_data) == ESP_FAIL)
                 send_text("photo ERROR\n");
         }

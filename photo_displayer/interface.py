@@ -1,15 +1,15 @@
 import serial
 from PIL import Image
 import numpy as np
-import io
+import os
 from pathlib import Path
 import threading
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
+import cv2
 
-
-ser = serial.Serial("/dev/ttyACM0")
+ser = serial.Serial("/dev/ttyACM0", baudrate=115200)
 
 START_CODE = 0x01
 SEND_BYTES_CODE = 0x02
@@ -20,7 +20,16 @@ CODE_END = 0xff
 image_folder_path = Path("/home/rsadr0pyz/Desktop/pad25/anonymous-images/")
 esp_image_folder_path = Path("/home/rsadr0pyz/Desktop/pad25/esp-images/")
 dataset_path = Path("/home/rsadr0pyz/Desktop/pad25/anonymous-metadata-full.csv")
-dataset = pd.read_csv(dataset_path)
+reddit_path = Path("/home/rsadr0pyz/Desktop/reddit/images")
+
+reddit = pd.DataFrame({"img-id": os.listdir(reddit_path), "in_fold": reddit_path, "out_fold":Path("/home/rsadr0pyz/Desktop/reddit/esp_images/")})
+
+dataset = pd.read_csv(dataset_path)[["img-id"]]
+dataset["img-id"] = dataset["img-id"] + ".png"
+dataset["in_fold"] = image_folder_path
+dataset["out_fold"] = esp_image_folder_path
+#dataset = pd.concat([reddit, dataset])
+
 
 class LatestValue:
     def __init__(self):
@@ -35,11 +44,7 @@ class LatestValue:
         with self.lock:
             v = self.value
             self.value = None
-            return v
-
-
-last_img = LatestValue()
-stop = False    
+            return v  
 
 def read_int():
     return int.from_bytes(ser.read(4), byteorder="little")
@@ -52,11 +57,25 @@ def receive_text():
     text = ser.read(size).decode(encoding="ASCII")
     print(text, end="")
 
+def rgb565_to_rgb888(bytes):
+    data = np.frombuffer(bytes, dtype=np.uint16)
+    data = data.byteswap()
+
+    b = ((data & 0x1F) << 3).astype(np.uint8)
+    g = (((data >> 5) & 0x3F) << 2).astype(np.uint8)
+    r = (((data >> 11) & 0x1F) << 3).astype(np.uint8)
+    
+    rgb = np.stack([r,g,b], axis=-1)
+    rgb = rgb.reshape((240, 240, 3))
+    return rgb
 
 def receive_img():
     size = read_int()
     img_bytes = ser.read(size)
-    img = Image.open(io.BytesIO(img_bytes))
+    img_raw = rgb565_to_rgb888(img_bytes)
+    
+    img = Image.fromarray(img_raw, "RGB")
+    img = img.rotate(180)
     last_img.set(img)
 
 def com_esp():
@@ -86,49 +105,77 @@ def com_esp():
             print(flush=True)
             exit()
 
+def show_frame(img):
+    if not isinstance(img, np.ndarray):
+        img = np.array(img)
 
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    cv2.imshow("stream", img)
 
-def on_close(event):
-    global com_thread, stop
-    print("Figure closed!")
-    exit()
+    key = cv2.waitKey(50)
+    return key == 114 # 'r'
 
-plt.ion()
-fig = plt.figure()
-fig.canvas.mpl_connect('close_event', on_close)
-ax = fig.add_subplot()
-im = None
-
-first_time = True
-
+cv2.namedWindow("stream", cv2.WINDOW_NORMAL)   
+default_img = Image.open("/home/rsadr0pyz/Desktop/Untitled.jpeg")
 com_thread = threading.Thread(target=com_esp, daemon=True)
 com_thread.start()
+last_img = LatestValue()
 
-for index, row in dataset.iterrows():
 
-    if not pd.notna(row["img-id"]):
-        continue
+def center_crop_to_ratio(img, target_ratio):
+    width, height = img.size
+    current_ratio = width / height
 
-    img = Image.open(image_folder_path / (row["img-id"]+".png") )
-    
-    if im == None:
-        im = ax.imshow(img)
+    if current_ratio > target_ratio:
+        new_width = int(target_ratio * height)
+        offset = (width - new_width) // 2
+        crop_box = (offset, 0, width - offset, height)
     else:
-        im.set_data(img)
+        new_height = int(width / target_ratio)
+        offset = (height - new_height) // 2
+        crop_box = (0, offset, width, height - offset)
 
-    plt.draw()       # Redraw the current figure
-    plt.pause(0.001) # Small pause to process GUI event
-    
-    if first_time:
-        input()
-        first_time = False
+    return img.crop(crop_box)
 
+def main_loop():
+    global default_img, last_img
+    first_time = True
 
-    ser.write([TAKE_PICTURE_CODE])
+    show_frame(default_img)
+    while input() != "go":
+        show_frame(default_img)
+        ser.write([TAKE_PICTURE_CODE])
 
-    capture = last_img.get()
-    while capture == None:
         capture = last_img.get()
-    print("found")
-    img.save(esp_image_folder_path / (row["img-id"]+".png"))
+        while capture == None:
+            capture = last_img.get()
+        show_frame(capture)
 
+    for index, row in dataset.iterrows():
+
+        if not pd.notna(row["img-id"]):
+            continue
+
+        img = Image.open(row["in_fold"] / (row["img-id"]) )
+        img = center_crop_to_ratio(img, 1)
+        
+        if(show_frame(img)):
+            return True
+
+        if first_time:
+            input()
+            first_time = False
+
+        ser.write([TAKE_PICTURE_CODE])
+
+        capture = last_img.get()
+        while capture == None:
+            time.sleep(0.01)
+            capture = last_img.get()
+        print("found")
+
+        capture.save(row["out_fold"] / (row["img-id"]))
+    return False
+
+while(main_loop()):
+    pass

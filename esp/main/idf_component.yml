@@ -6,4 +6,4 @@ dependencies:
   espressif/esp-tflite-micro: '*'
   espressif/esp32-camera: '*'
   espressif/button: '*'
-  espressif/esp32_s3_eye: ^6.0.0
+  espressif/esp32_s3_eye: 5.0.2
