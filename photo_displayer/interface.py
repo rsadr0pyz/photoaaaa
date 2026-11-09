@@ -20,15 +20,23 @@ CODE_END = 0xff
 image_folder_path = Path("/home/rsadr0pyz/Desktop/pad25/anonymous-images/")
 esp_image_folder_path = Path("/home/rsadr0pyz/Desktop/pad25/esp-images/")
 dataset_path = Path("/home/rsadr0pyz/Desktop/pad25/anonymous-metadata-full.csv")
-reddit_path = Path("/home/rsadr0pyz/Desktop/reddit/images")
+reddit_path = Path("/home/rsadr0pyz/Desktop/reddit/reddit")
+test_img = Image.open("/home/rsadr0pyz/Desktop/Untitled.jpeg")
 
-reddit = pd.DataFrame({"img-id": os.listdir(reddit_path), "in_fold": reddit_path, "out_fold":Path("/home/rsadr0pyz/Desktop/reddit/esp_images/")})
 
-dataset = pd.read_csv(dataset_path)[["img-id"]]
-dataset["img-id"] = dataset["img-id"] + ".png"
-dataset["in_fold"] = image_folder_path
-dataset["out_fold"] = esp_image_folder_path
-#dataset = pd.concat([reddit, dataset])
+#Configurado so para o reddit
+
+# in_fold: da onde saem as images. out_fold: para onde vao as imagens novas.
+dataset = pd.DataFrame({"img-id": os.listdir(reddit_path), "in_fold": reddit_path, "out_fold":Path("/home/rsadr0pyz/Desktop/reddit/esp_images/")})
+
+#Configurado so para o pad
+#dataset = pd.read_csv(dataset_path)[["img-id"]]
+#dataset["img-id"] = dataset["img-id"] + ".png"
+#dataset["in_fold"] = image_folder_path
+#dataset["out_fold"] = esp_image_folder_path
+
+# Para fazer ambos ao msm tempo (mudar o nome das variaveis)
+#dataset = pd.concat([reddit_dataset, pad_dataset])
 
 
 class LatestValue:
@@ -106,6 +114,7 @@ def com_esp():
             exit()
 
 def show_frame(img):
+    img.rotate(90)
     if not isinstance(img, np.ndarray):
         img = np.array(img)
 
@@ -116,7 +125,6 @@ def show_frame(img):
     return key == 114 # 'r'
 
 cv2.namedWindow("stream", cv2.WINDOW_NORMAL)   
-default_img = Image.open("/home/rsadr0pyz/Desktop/Untitled.jpeg")
 com_thread = threading.Thread(target=com_esp, daemon=True)
 com_thread.start()
 last_img = LatestValue()
@@ -138,12 +146,12 @@ def center_crop_to_ratio(img, target_ratio):
     return img.crop(crop_box)
 
 def main_loop():
-    global default_img, last_img
+    global test_img, last_img
     first_time = True
 
-    show_frame(default_img)
+    show_frame(test_img)
     while input() != "go":
-        show_frame(default_img)
+        show_frame(test_img)
         ser.write([TAKE_PICTURE_CODE])
 
         capture = last_img.get()
